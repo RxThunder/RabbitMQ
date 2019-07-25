@@ -1,0 +1,11 @@
+/resources export-ignore
+.editorconfig export-ignore
+.gitignore export-ignore
+.php_cs.dist export-ignore
+.travis.yml export-ignore
+composer.json export-ignore
+grumphp.yml export-ignore
+LICENSE export-ignore
+Makefile export-ignore
+phpstan.neon export-ignore
+README.md export-ignore
