@@ -10,6 +10,8 @@
 namespace RxThunder\RabbitMQ\Console;
 
 use EventLoop\EventLoop;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
 use Rx\Scheduler;
 use Rxnet\RabbitMq\Client;
 use Rxnet\RabbitMq\Message;
@@ -18,8 +20,10 @@ use RxThunder\Core\Router\Router;
 use RxThunder\RabbitMQ\Router\Adapter;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 
-final class RabbitMqConsole extends AbstractConsole
+final class RabbitMqConsole extends AbstractConsole implements LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
     public static $expression = 'rabbit:listen:broker queue [--middlewares=]* [--timeout=] [--max-retry=] [--retry-routing-key=] [--retry-exchange=] [--delayed-exchange-name=]';
     public static $description = 'RabbitMq consumer to send command to saga process manager';
     public static $argumentsAndOptions = [
@@ -104,8 +108,12 @@ final class RabbitMqConsole extends AbstractConsole
                     });
             })->subscribe(
                 null,
-                function ($e) {
-                    var_dump($e);
+                function (\Throwable $e) {
+                    $this->logger->critical(
+                        $e->getMessage(),
+                        ['exception' => $e]
+                    );
+                    EventLoop::getLoop()->stop();
                 }
             );
     }
