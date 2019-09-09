@@ -51,7 +51,7 @@ using the [voryx/event-loop](https://github.com/voryx/event-loop) static getter.
 # config/services.php
 
 use Rxnet\RabbitMq\Client;
-use RxThunder\RabbitMq\Factory;
+use RxThunder\RabbitMQ\Factory;
 
 $asynchRabbitMQDefinition = $container->register(Client::class)
     ->setFactory([Factory::class, 'createWithVoryxEventLoop'])
@@ -76,7 +76,7 @@ $consoleDefinition->setPublic(true);
 $consoleDefinition->setAutowired(true);
 $consoleDefinition->setAutoconfigured(true);
 
-$this->registerClasses($definition, 'RxThunder\\RabbitMQ\\Console\\', '../vendor/rxthunder/rabbitmq/src/Console/*');
+$this->registerClasses($consoleDefinition, 'RxThunder\\RabbitMQ\\Console\\', '../vendor/rxthunder/rabbitmq/src/Console/*');
 ```
 
 Or if you prefer you can include
