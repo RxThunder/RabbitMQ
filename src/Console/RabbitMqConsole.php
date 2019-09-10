@@ -94,7 +94,7 @@ final class RabbitMqConsole extends AbstractConsole implements LoggerAwareInterf
                             ->produce($message->getData(), $retryRoutingKey, $retryExchange, $message->headers)
                             ->doOnCompleted(
                                 function () use ($message, $retryRoutingKey) {
-                                    echo "Message {$message->getRoutingKey()} was send to {$retryRoutingKey}".PHP_EOL;
+                                    $this->logger->debug("Message {$message->getRoutingKey()} was send to {$retryRoutingKey}");
 
                                     $message->ack();
                                 }

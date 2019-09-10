@@ -10,15 +10,20 @@
 namespace RxThunder\RabbitMQ\Console;
 
 use Bunny\Channel;
+use Bunny\Exception\ClientException;
 use EventLoop\EventLoop;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerAwareTrait;
 use React\Promise\PromiseInterface;
 use Rxnet\RabbitMq\Client;
 use RxThunder\Core\Console\AbstractConsole;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Symfony\Component\Finder\Finder;
 
-final class RabbitMqSetupConsole extends AbstractConsole
+final class RabbitMqSetupConsole extends AbstractConsole implements LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
     public static $expression = 'rabbit:setup [path]';
     public static $description = 'Create queue and binding';
 
@@ -74,9 +79,20 @@ final class RabbitMqSetupConsole extends AbstractConsole
             $promise = $promise->then(function (Channel $channel) use ($queue) {
                 return $channel
                     ->queueDeclare($queue, false, true)
-                    ->then(function () use ($channel) {
+                    ->then(function () use ($channel, $queue) {
+                        $this->logger->debug('Queue '.$queue.' declared');
+
                         return $channel;
                     });
+            }, function (\Exception $exception) {
+                $message = $exception->getMessage();
+
+                if ($exception instanceof ClientException) {
+                    $message = 'Rabbit connection failed, you probably have an error in your configuration : '.
+                        $message;
+                }
+
+                $this->logger->error($message);
             });
 
             $routing_keys = json_decode($file->getContents(), true);
@@ -99,7 +115,9 @@ final class RabbitMqSetupConsole extends AbstractConsole
             function (Channel $channel) use ($queue, $exchange, $routing_key) {
                 return $channel
                     ->queueBind($queue, $exchange, $routing_key)
-                    ->then(function () use ($channel) {
+                    ->then(function () use ($channel, $queue, $exchange, $routing_key) {
+                        $this->logger->debug('Queue '.$queue.' was bind to exchange '.$exchange.' on routing_key '.$routing_key);
+
                         return $channel;
                     });
             }

@@ -60,8 +60,6 @@ final class Adapter implements LoggerAwareInterface
 
     public function __invoke(Message $message)
     {
-//        $this->logger->info("received {$record->getType()} with {$record->getNumber()}@{$record->getStreamId()}");
-
         $metadata = [
             'uid' => $message->consumerTag,
             'stream_id' => $message->deliveryTag,
@@ -85,8 +83,6 @@ final class Adapter implements LoggerAwareInterface
         $subject = new Subject($dataModel, $message);
 
         $subjectObs = $subject->skip(1)->share();
-
-//        $subjectObs->subscribe($this->logger);
 
         if (null !== $this->timeout) {
             // Give only x ms to execute
@@ -117,19 +113,15 @@ final class Adapter implements LoggerAwareInterface
                     }
 
                     $this->handleException($message, $e);
-                // $this->logger->debug("[nack-stop] Error {$e->getMessage()}");
                 },
                 function () use ($message) {
-                    $date = new \DateTimeImmutable();
-
                     $message->ack()->subscribe(
                         null,
                         null,
-                        function () use ($message, $date) {
-                            echo $date->format(DATE_ISO8601).' > '.$message->getRoutingKey().' > ack'.PHP_EOL;
+                        function () use ($message) {
+                            $this->logger->debug($message->getRoutingKey().' > ack');
                         }
                     );
-                    // $this->logger->debug('[ack] Completed');
                 }
             );
 
@@ -142,16 +134,11 @@ final class Adapter implements LoggerAwareInterface
             null,
             null,
             function () use ($e, $dataModel, $message) {
-                echo "ack but due to acceptable exception {$message->getRoutingKey()}".PHP_EOL;
-
-                if ($previous = $e->getPrevious()) {
-                    $this->logger->warning($previous->getMessage(), [
-                        'exception' => $previous,
-                        'routing_key' => $dataModel->getType(),
-                        'payload' => $message->getData(),
-                        'metadata' => $dataModel->getMetadata(),
-                    ]);
-                }
+                $this->logger->notice("ack but due to acceptable exception {$message->getRoutingKey()}", [
+                    'exception' => $e->getPrevious(),
+                    'payload' => $message->getData(),
+                    'metadata' => $dataModel->getMetadata(),
+                ]);
             }
         );
     }
@@ -159,10 +146,7 @@ final class Adapter implements LoggerAwareInterface
     private function handleException(Message $message, \Throwable $e): void
     {
         $onCompleted = function () use ($e, $message) {
-            echo "Message {$message->getRoutingKey()} has been nack".PHP_EOL;
-            echo "Reason: {$e->getMessage()}".PHP_EOL;
-            echo "This occurs in {$e->getFile()} @line {$e->getLine()}".PHP_EOL;
-            $this->logger->error($e->getMessage(), [
+            $this->logger->error("Message {$message->getRoutingKey()} has been nack", [
                 'exception' => $e,
             ]);
         };
@@ -180,10 +164,7 @@ final class Adapter implements LoggerAwareInterface
             null,
             null,
             function () use ($e, $message) {
-                echo "Message {$message->getRoutingKey()} has been rejected".PHP_EOL;
-                echo "Reason: {$e->getMessage()}".PHP_EOL;
-                echo "This occurs in {$e->getFile()} @line {$e->getLine()}".PHP_EOL;
-                $this->logger->error($e->getMessage(), [
+                $this->logger->error("Message {$message->getRoutingKey()} has been rejected", [
                     'exception' => $e,
                 ]);
             }
@@ -203,10 +184,7 @@ final class Adapter implements LoggerAwareInterface
             null,
             null,
             function () use ($e, $message) {
-                echo "Message {$message->getRoutingKey()} has been requeued for later".PHP_EOL;
-                echo "Reason: {$e->getMessage()}".PHP_EOL;
-                echo "This occurs in {$e->getFile()} @line {$e->getLine()}".PHP_EOL;
-                $this->logger->warning($e->getMessage(), [
+                $this->logger->warning("Message {$message->getRoutingKey()} has been requeued for later", [
                     'exception' => $e,
                 ]);
             }
