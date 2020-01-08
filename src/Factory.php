@@ -11,12 +11,12 @@ declare(strict_types=1);
 
 namespace RxThunder\RabbitMQ;
 
-use EventLoop\EventLoop;
 use Rxnet\RabbitMq\Client;
+use RxThunder\ReactPHP\EventLoop;
 
 final class Factory
 {
-    public static function createWithVoryxEventLoop(
+    public static function createWithStaticEventLoop(
         string $host,
         string $port,
         string $vhost,
@@ -24,7 +24,7 @@ final class Factory
         string $password
     ): Client {
         return new Client(
-            EventLoop::getLoop(),
+            EventLoop::loop(),
             [
                 'host' => $host,
                 'port' => $port,

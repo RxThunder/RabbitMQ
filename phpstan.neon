@@ -3,5 +3,3 @@ parameters:
     paths: ['src']
     excludes_analyse:
         - %rootDir%/../../../vendor
-    ignoreErrors:
-        - '#Cannot call method then()#'

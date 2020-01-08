@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /*
  * This file is part of the Thunder micro CLI framework.
  * (c) Jérémy Marodon <marodon.jeremy@gmail.com>
@@ -7,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace RxThunder\RabbitMQ\Router;
+namespace RxThunder\RabbitMQ\Exception;
 
-final class Constants
+use RxThunder\Core\Model\Exception\DataModelException;
+
+class RejectException extends DataModelException
 {
-    public const DATA_FORMAT_JSON = 'json';
-    public const DATA_FORMAT_STRING = 'string';
 }

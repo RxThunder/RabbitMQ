@@ -9,14 +9,9 @@ declare(strict_types=1);
  * file that was distributed with this source code.
  */
 
-namespace RxThunder\RabbitMQ\Router\Exception;
+namespace RxThunder\RabbitMQ;
 
-use Throwable;
-
-class AcceptableException extends \Exception
+final class Headers
 {
-    public function __construct(Throwable $previous)
-    {
-        parent::__construct('', 0, $previous);
-    }
+    public const CONTENT_TYPE = 'Content-Type';
 }

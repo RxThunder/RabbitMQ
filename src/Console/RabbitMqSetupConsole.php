@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /*
  * This file is part of the Thunder micro CLI framework.
  * (c) Jérémy Marodon <marodon.jeremy@gmail.com>
@@ -10,117 +12,167 @@
 namespace RxThunder\RabbitMQ\Console;
 
 use Bunny\Channel;
-use Bunny\Exception\ClientException;
-use EventLoop\EventLoop;
+use Bunny\Protocol\MethodQueueDeclareOkFrame;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
-use React\Promise\PromiseInterface;
+use Rx\Observable;
+use Rx\Scheduler;
 use Rxnet\RabbitMq\Client;
-use RxThunder\Core\Console\AbstractConsole;
+use Rxnet\RabbitMq\Exchange;
+use Rxnet\RabbitMq\Queue;
+use RxThunder\Core\Console;
+use RxThunder\ReactPHP\EventLoop;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Symfony\Component\Finder\Finder;
+use Symfony\Component\Finder\SplFileInfo;
 
-final class RabbitMqSetupConsole extends AbstractConsole implements LoggerAwareInterface
+final class RabbitMqSetupConsole extends Console implements LoggerAwareInterface
 {
     use LoggerAwareTrait;
 
-    public static $expression = 'rabbit:setup [path]';
-    public static $description = 'Create queue and binding';
+    public static string $expression  = 'rabbit:setup [path]';
+    public static string $description = 'Create queue and binding';
 
-    public static $argumentsAndOptions = [
-        'path' => 'Path where binding file are stored',
-    ];
+    /** @var array<string, string> */
+    public static array $arguments_and_options = ['path' => 'Path where binding file are stored'];
 
-    public static $defaults = [
-        'path' => '/external/rabbitmq',
-    ];
+    /** @var array<string, bool|float|int|string> */
+    public static array $defaults = ['path' => '/external/rabbitmq'];
 
-    /** @var string */
-    protected $path;
+    protected string $path;
 
-    /**
-     * @var Client
-     */
-    private $rabbit;
-    /**
-     * @var ParameterBagInterface
-     */
-    private $parameterBag;
+    private Client $rabbit;
+    private ParameterBagInterface $parameter_bag;
 
     public function __construct(
         Client $rabbit,
-        ParameterBagInterface $parameterBag
+        ParameterBagInterface $parameter_bag
     ) {
-        $this->rabbit = $rabbit;
-        $this->parameterBag = $parameterBag;
+        $this->rabbit        = $rabbit;
+        $this->parameter_bag = $parameter_bag;
     }
 
-    public function __invoke(string $path)
+    public function __invoke(string $path): void
     {
+        // You only need to set the default scheduler once
+        Scheduler::setDefaultFactory(
+            static function () {
+                // The getLoop method auto start loop
+                return new Scheduler\EventLoopScheduler(EventLoop::loop());
+            }
+        );
+
         $this->path = $path;
 
         $finder = new Finder();
         $finder->files()->in(
             sprintf(
                 '%s%s/queues',
-                $this->parameterBag->get('thunder.project_dir'),
+                $this->parameter_bag->get('thunder.project_dir'),
                 $this->path
             )
         );
 
-        $promise = $this->rabbit
-            ->channel()
-            ->toPromise()
-        ;
-
-        foreach ($finder as $file) {
-            $queue = $file->getBasename('.'.$file->getExtension());
-
-            $promise = $promise->then(function (Channel $channel) use ($queue) {
-                return $channel
-                    ->queueDeclare($queue, false, true)
-                    ->then(function () use ($channel, $queue) {
-                        $this->logger->debug('Queue '.$queue.' declared');
-
-                        return $channel;
-                    });
-            }, function (\Exception $exception) {
-                $message = $exception->getMessage();
-
-                if ($exception instanceof ClientException) {
-                    $message = 'Rabbit connection failed, you probably have an error in your configuration : '.
-                        $message;
-                }
-
-                $this->logger->error($message);
-            });
-
-            $routing_keys = json_decode($file->getContents(), true);
-
-            foreach ($routing_keys as $routing_key => $exchanges) {
-                foreach ($exchanges as $exchange) {
-                    $promise = $this->bind($promise, $queue, $exchange, $routing_key);
-                }
-            }
-        }
-
-        $promise->then(function () {
-            EventLoop::getLoop()->stop();
-        });
-    }
-
-    private function bind(PromiseInterface $promise, string $queue, string $exchange, string $routing_key): PromiseInterface
-    {
-        return $promise->then(
-            function (Channel $channel) use ($queue, $exchange, $routing_key) {
-                return $channel
-                    ->queueBind($queue, $exchange, $routing_key)
-                    ->then(function () use ($channel, $queue, $exchange, $routing_key) {
-                        $this->logger->debug('Queue '.$queue.' was bind to exchange '.$exchange.' on routing_key '.$routing_key);
-
-                        return $channel;
-                    });
-            }
+        $queues = Observable::fromArray(
+            array_map(
+                static function (SplFileInfo $file) {
+                    return [
+                        $file->getBasename('.' . $file->getExtension()),
+                        json_decode($file->getContents(), true),
+                    ];
+                },
+                iterator_to_array($finder)
+            ) ?? []
         );
+
+        $this->rabbit->channel()
+            ->combineLatest([$queues])
+            ->flatMap(function ($channel_queue) {
+                [$channel, $queue_data] = $channel_queue;
+
+                if (!$channel instanceof Channel) {
+                    throw new \InvalidArgumentException();
+                }
+
+                if (!is_array($queue_data)) {
+                    throw new \InvalidArgumentException();
+                }
+
+                [$queue_name, $bindings] = $queue_data;
+
+                if (!is_string($queue_name)) {
+                    throw new \InvalidArgumentException();
+                }
+
+                if (!is_array($bindings)) {
+                    throw new \InvalidArgumentException();
+                }
+
+                $binds = [];
+                foreach ($bindings as $routing_key => $exchanges) {
+                    foreach ($exchanges as $exchange) {
+                        $binds[] = [$routing_key, $exchange];
+                    }
+                }
+
+                $binds = Observable::fromArray($binds);
+
+                return (new Queue($queue_name, $channel))
+                    ->create()
+                    ->do(function (MethodQueueDeclareOkFrame $frame): void {
+                        $this->logger->debug('Queue ' . $frame->queue . ' created');
+                    })
+                    ->combineLatest([$binds], static function (MethodQueueDeclareOkFrame $frame, $bind) use ($channel) {
+                        return [new Queue($frame->queue, $channel), $bind, $channel];
+                    })
+                    ->flatMap(function ($queue_with_binding) {
+                        [$queue, $binding, $channel] = $queue_with_binding;
+
+                        if (!$queue instanceof Queue) {
+                            throw new \InvalidArgumentException();
+                        }
+
+                        if (!$channel instanceof Channel) {
+                            throw new \InvalidArgumentException();
+                        }
+
+                        [$routing_key, $exchange] = $binding;
+
+                        if (!is_string($routing_key)) {
+                            throw new \InvalidArgumentException();
+                        }
+
+                        if (!is_string($exchange)) {
+                            throw new \InvalidArgumentException();
+                        }
+
+                        return (new Exchange($exchange, $channel))
+                            ->create(Exchange::TYPE_DIRECT, [Exchange::DURABLE])
+                            ->flatMap(function () use ($exchange, $routing_key, $queue) {
+                                return $queue
+                                    ->bind($routing_key, $exchange)
+                                    ->do(
+                                        function () use ($queue, $exchange, $routing_key): void {
+                                            $this->logger->debug('Queue ' . $queue->name() . ' was bind to exchange ' . $exchange . ' with routing_key ' . $routing_key);
+                                        }
+                                    );
+                            });
+                    })
+                    ->takeLast(1);
+            })
+            ->subscribe(
+                null,
+                function (\Throwable $throwable): void {
+                    var_dump($throwable);
+                    $this->logger->error($throwable->getMessage(), ['exception' => $throwable]);
+                    EventLoop::loop()->stop();
+                },
+                function (): void {
+                    $this->logger->info('All queues and binding done');
+                    EventLoop::loop()->stop();
+                }
+            );
+
+        EventLoop::loop()->run();
     }
 }

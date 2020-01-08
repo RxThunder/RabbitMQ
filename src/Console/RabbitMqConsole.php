@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /*
  * This file is part of the Thunder micro CLI framework.
  * (c) Jérémy Marodon <marodon.jeremy@gmail.com>
@@ -9,130 +11,133 @@
 
 namespace RxThunder\RabbitMQ\Console;
 
-use EventLoop\EventLoop;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
+use Rx\Observable;
 use Rx\Scheduler;
 use Rxnet\RabbitMq\Client;
 use Rxnet\RabbitMq\Message;
-use RxThunder\Core\Console\AbstractConsole;
+use RxThunder\Core\Console;
+use RxThunder\Core\Model\DataModel;
 use RxThunder\Core\Router\Router;
-use RxThunder\RabbitMQ\Router\Adapter;
+use RxThunder\RabbitMQ\MessageTransformer;
+use RxThunder\RabbitMQ\Observer\AmqpMessageObserver;
+use RxThunder\ReactPHP\EventLoop;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 
-final class RabbitMqConsole extends AbstractConsole implements LoggerAwareInterface
+final class RabbitMqConsole extends Console implements LoggerAwareInterface
 {
     use LoggerAwareTrait;
 
-    public static $expression = 'rabbit:listen:broker queue [--middlewares=]* [--timeout=] [--max-retry=] [--retry-routing-key=] [--retry-exchange=] [--delayed-exchange-name=]';
-    public static $description = 'RabbitMq consumer to send command to saga process manager';
-    public static $argumentsAndOptions = [
+    public static string $expression  = 'rabbit:listen:broker queue [--timeout=] [--max_retry=] [--retry_routing_key=] [--retry_exchange=] [--delayed_exchange_name=]';
+    public static string $description = 'RabbitMq consumer to send command to saga process manager';
+
+    /** @var array<string, string> */
+    public static array $arguments_and_options = [
         'queue' => 'Name of the queue to connect to',
         '--timeout' => 'If the timeout is reached, the message will be nacked (use -1 for no timeout)',
-        '--max-retry' => 'The max retried number of times (-1 for no max retry)',
-        '--retry-routing-key' => 'If the max-retry option is activated, the name of the routing key for the failed message',
-        '--retry-exchange' => 'If the max-retry option is activated, the retry exchange name where to put the failed message',
-        '--delayed-exchange-name' => 'The delayed exchange\'s name. This is used when you want to retry a message after a given delay. To use this you need to have an exchange with the type "x-delayed-message". See https://github.com/rabbitmq/rabbitmq-delayed-message-exchange for more information',
+        '--max_retry' => 'The max retried number of times (-1 for no max retry)',
+        '--retry_routing_key' => 'If the max-retry option is activated, the name of the routing key for the failed message',
+        '--retry_exchange' => 'If the max-retry option is activated, the retry exchange name where to put the failed message',
+        '--delayed_exchange_name' => 'The delayed exchangeʼs name. This is used when you want to retry a message after a given delay. To use this you need to have an exchange with the type "x-delayed-message". See https://github.com/rabbitmq/rabbitmq-delayed-message-exchange for more information',
     ];
 
-    public static $defaults = [
+    /** @var array<string, bool|float|int|string> */
+    public static array $defaults = [
         'timeout' => 10000,
-        'max-retry' => -1,
-        'retry-routing-key' => '/failed-message',
-        'retry-exchange' => 'amq.direct',
-        'delayed-exchange-name' => 'direct.delayed',
+        'max_retry' => -1,
+        'retry_routing_key' => '/failed-message',
+        'retry_exchange' => 'amq.direct',
+        'delayed_exchange_name' => 'direct.delayed',
     ];
 
-    private $rabbit;
-    private $parameterBag;
-    private $router;
-    private $adapter;
+    private Client $rabbit;
+    private ParameterBagInterface $parameter_bag;
+    private Router $router;
 
     public function __construct(
         Client $rabbit,
-        ParameterBagInterface $parameterBag,
-        Router $router,
-        Adapter $adapter
+        ParameterBagInterface $parameter_bag,
+        Router $router
     ) {
-        $this->rabbit = $rabbit;
-        $this->parameterBag = $parameterBag;
-        $this->router = $router;
-        $this->adapter = $adapter;
+        $this->rabbit        = $rabbit;
+        $this->parameter_bag = $parameter_bag;
+        $this->router        = $router;
     }
 
     public function __invoke(
         string $queue,
-        array $middlewares,
         int $timeout,
-        int $maxRetry,
-        string $retryRoutingKey,
-        string $retryExchange,
-        string $delayedExchangeName
-    ) {
-        $this->setup($timeout, $maxRetry, $delayedExchangeName);
-
+        int $max_retry,
+        string $retry_routing_key,
+        string $retry_exchange,
+        string $delayed_exchange_name
+    ): void {
         // You only need to set the default scheduler once
-        Scheduler::setDefaultFactory(
-            function () {
+         Scheduler::setDefaultFactory(
+             static function () {
                 // The getLoop method auto start loop
-                return new Scheduler\EventLoopScheduler(EventLoop::getLoop());
-            }
-        );
+                return new Scheduler\EventLoopScheduler(EventLoop::loop());
+             }
+         );
 
         $this->rabbit
             ->consume($queue, 1)
-            ->flatMap(function (Message $message) use ($maxRetry, $retryRoutingKey, $retryExchange) {
+            ->do(function (Message $message) use ($delayed_exchange_name, $timeout, $max_retry, $retry_routing_key, $retry_exchange): void {
                 // Handle the number of times the message has been tried if the option is active
-                if (-1 !== $maxRetry) {
-                    $tried = (int) $message->getHeader(Message::HEADER_TRIED, 0);
+                if (-1 !== $max_retry) {
+                    $tried = (int) $message->header(Message::HEADER_TRIED, 0);
 
                     // If the max-retry is reached, send the message to a new queue and ack this
-                    if ($tried >= $maxRetry) {
-                        $message->headers = array_merge($message->headers, ['Failed-message-routing-key' => $message->getRoutingKey()]);
+                    if ($tried >= $max_retry) {
+                        $message->addHeader('Failed-message-routing-ke', $message->routingKey());
 
-                        return $this->rabbit
-                            ->produce($message->getData(), $retryRoutingKey, $retryExchange, $message->headers)
-                            ->doOnCompleted(
-                                function () use ($message, $retryRoutingKey) {
-                                    $this->logger->debug("Message {$message->getRoutingKey()} was send to {$retryRoutingKey}");
+                        $this->rabbit
+                            ->produce($message->content(), $retry_routing_key, $retry_exchange, $message->headers())
+                            ->flatMap(
+                                function () use ($message, $retry_routing_key): Observable {
+                                    $this->logger->debug("Message {$message->routingKey()} was send to {$retry_routing_key}");
 
-                                    $message->ack();
+                                    return $message->ack();
                                 }
-                            );
+                            )
+                            ->subscribe();
+
+                        return;
                     }
                 }
 
-                return ($this->adapter)($message)
-                    ->do(function ($subject) {
-                        ($this->router)($subject);
-                    });
+                $message_transformer = new MessageTransformer();
+
+                if (-1 !== $timeout) {
+                    $message_transformer->defineTimeout($timeout);
+                }
+
+                $observer = new AmqpMessageObserver($message);
+
+                if (-1 !== $max_retry) {
+                    $observer->rejectToBottomInsteadOfNacking();
+                }
+
+                $observer->defineDelayedExchangeName($delayed_exchange_name);
+
+                $message_transformer
+                    ->toDataModel($message)
+                    ->flatMap(function (DataModel $data_model): Observable {
+                        return $this->router->match($data_model->type())($data_model);
+                    })
+                    ->subscribe($observer);
             })->subscribe(
                 null,
-                function (\Throwable $e) {
+                function (\Throwable $throwable): void {
                     $this->logger->critical(
-                        $e->getMessage(),
-                        ['exception' => $e]
+                        $throwable->getMessage(),
+                        ['exception' => $throwable]
                     );
-                    EventLoop::getLoop()->stop();
+                    EventLoop::loop()->stop();
                 }
             );
-    }
 
-    /**
-     * @param int    $timeout
-     * @param int    $maxRetry
-     * @param string $delayedExchangeName
-     */
-    private function setup(int $timeout, int $maxRetry, string $delayedExchangeName): void
-    {
-        if (-1 !== $timeout) {
-            $this->adapter->setTimeout($timeout);
-        }
-
-        if (-1 !== $maxRetry) {
-            $this->adapter->rejectToBottomInsteadOfNacking();
-        }
-
-        $this->adapter->setDelayedExchangeName($delayedExchangeName);
+        EventLoop::loop()->run();
     }
 }

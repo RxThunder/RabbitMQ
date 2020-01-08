@@ -1,8 +1,8 @@
 <?php
 
-use RxThunder\RabbitMQ\Router\Adapter;
+use RxThunder\RabbitMQ\MessageTransformer;
 
-$asynchRabbitMQDefinition = $container->register(Adapter::class)
+$asynchRabbitMQDefinition = $container->register(MessageTransformer::class)
     ->setPublic(false)
     ->setAutowired(false)
     ->setAutoconfigured(true);

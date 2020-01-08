@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /*
  * This file is part of the Thunder micro CLI framework.
  * (c) Jérémy Marodon <marodon.jeremy@gmail.com>
@@ -7,8 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace RxThunder\RabbitMQ\Router\Exception;
+namespace RxThunder\RabbitMQ\Exception;
 
-class RejectException extends \Exception
+use RxThunder\Core\Model\Exception\DataModelException;
+
+class AcceptableException extends DataModelException
 {
 }

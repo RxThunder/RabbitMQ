@@ -9,14 +9,16 @@
     }
   ],
   "require": {
-    "php": "^7.2",
-    "rxthunder/core": "^0.6.0",
-    "rxnet/rabbitmq": "^0.2.0",
-    "voryx/event-loop": "^3.0"
+    "php": "^7.4",
+    "rxthunder/core": "^1.0",
+    "rxthunder/react-php": "^1.0",
+    "rxnet/rabbitmq": "^0.3.0",
+    "symfony/finder": "^4.0|^5.0"
   },
   "require-dev": {
     "friendsofphp/php-cs-fixer": "^2.16",
-    "phpstan/phpstan": "^0.12.0"
+    "phpstan/phpstan": "^0.12.0",
+    "youdot/coding-standard": "^2.0"
   },
   "autoload": {
     "psr-4": {
