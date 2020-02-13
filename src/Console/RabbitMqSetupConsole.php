@@ -163,7 +163,6 @@ final class RabbitMqSetupConsole extends Console implements LoggerAwareInterface
             ->subscribe(
                 null,
                 function (\Throwable $throwable): void {
-                    var_dump($throwable);
                     $this->logger->error($throwable->getMessage(), ['exception' => $throwable]);
                     EventLoop::loop()->stop();
                 },
