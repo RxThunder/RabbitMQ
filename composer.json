@@ -10,7 +10,7 @@
   ],
   "require": {
     "php": "^7.4",
-    "rxthunder/core": "^1.0",
+    "rxthunder/core": "^1.0.1",
     "rxthunder/react-php": "^1.0",
     "rxnet/rabbitmq": "^0.3.0",
     "symfony/finder": "^4.0|^5.0"

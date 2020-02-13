@@ -11,17 +11,13 @@ declare(strict_types=1);
 
 namespace RxThunder\RabbitMQ;
 
-use Psr\Log\LoggerAwareInterface;
-use Psr\Log\LoggerAwareTrait;
 use Rx\Observable;
 use Rxnet\RabbitMq\Message;
 use RxThunder\Core\Model\DataModel;
 use RxThunder\Core\Model\Payload;
 
-final class MessageTransformer implements LoggerAwareInterface
+final class MessageTransformer
 {
-    use LoggerAwareTrait;
-
     private ?int $timeout = null;
 
     public function defineTimeout(int $timeout): void

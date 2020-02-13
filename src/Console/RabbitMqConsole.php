@@ -113,7 +113,7 @@ final class RabbitMqConsole extends Console implements LoggerAwareInterface
                     $message_transformer->defineTimeout($timeout);
                 }
 
-                $observer = new AmqpMessageObserver($message);
+                $observer = new AmqpMessageObserver($message, $this->logger);
 
                 if (-1 !== $max_retry) {
                     $observer->rejectToBottomInsteadOfNacking();

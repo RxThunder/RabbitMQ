@@ -11,7 +11,6 @@ declare(strict_types=1);
 
 namespace RxThunder\RabbitMQ\Observer;
 
-use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Rx\Observer\AbstractObserver;
 use Rxnet\RabbitMq\Message;
@@ -19,18 +18,19 @@ use RxThunder\RabbitMQ\Exception\AcceptableException;
 use RxThunder\RabbitMQ\Exception\RejectException;
 use RxThunder\RabbitMQ\Exception\RetryLaterException;
 
-final class AmqpMessageObserver extends AbstractObserver implements LoggerAwareInterface
+final class AmqpMessageObserver extends AbstractObserver
 {
     private Message $message;
     private bool $reject_to_bottom;
     private ?string $delayed_exchange_name = null;
     private LoggerInterface $logger;
 
-    public function __construct(Message $message)
+    public function __construct(Message $message, LoggerInterface $logger)
     {
         $this->message               = $message;
         $this->reject_to_bottom      = false;
         $this->delayed_exchange_name = null;
+        $this->logger                = $logger;
     }
 
     public function defineDelayedExchangeName(string $name): void
@@ -145,13 +145,5 @@ final class AmqpMessageObserver extends AbstractObserver implements LoggerAwareI
                 $this->logger->warning("Message {$this->message->routingKey()} has been requeued for later", ['exception' => $retry_later_exception]);
             }
         );
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function setLogger(LoggerInterface $logger)
-    {
-        $this->logger = $logger;
     }
 }
