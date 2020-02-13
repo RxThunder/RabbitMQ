@@ -23,7 +23,6 @@ use RxThunder\Core\Router\Router;
 use RxThunder\RabbitMQ\MessageTransformer;
 use RxThunder\RabbitMQ\Observer\AmqpMessageObserver;
 use RxThunder\ReactPHP\EventLoop;
-use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 
 final class RabbitMqConsole extends Console implements LoggerAwareInterface
 {
@@ -52,17 +51,14 @@ final class RabbitMqConsole extends Console implements LoggerAwareInterface
     ];
 
     private Client $rabbit;
-    private ParameterBagInterface $parameter_bag;
     private Router $router;
 
     public function __construct(
         Client $rabbit,
-        ParameterBagInterface $parameter_bag,
         Router $router
     ) {
-        $this->rabbit        = $rabbit;
-        $this->parameter_bag = $parameter_bag;
-        $this->router        = $router;
+        $this->rabbit = $rabbit;
+        $this->router = $router;
     }
 
     public function __invoke(
