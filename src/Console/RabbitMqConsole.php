@@ -86,7 +86,7 @@ final class RabbitMqConsole extends Console implements LoggerAwareInterface
 
                     // If the max-retry is reached, send the message to a new queue and ack this
                     if ($tried >= $max_retry) {
-                        $message->addHeader('Failed-message-routing-ke', $message->routingKey());
+                        $message->addHeader('Failed-message-routing-key', $message->routingKey());
 
                         $this->rabbit
                             ->produce($message->content(), $retry_routing_key, $retry_exchange, $message->headers())
