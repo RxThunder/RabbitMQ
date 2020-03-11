@@ -122,7 +122,7 @@ final class RabbitMqSetupConsole extends Console implements LoggerAwareInterface
                     ->do(function (MethodQueueDeclareOkFrame $frame): void {
                         $this->logger->debug('Queue ' . $frame->queue . ' created');
                     })
-                    ->combineLatest([$binds], static function (MethodQueueDeclareOkFrame $frame, $bind) use ($channel) {
+                    ->withLatestFrom([$binds], static function (MethodQueueDeclareOkFrame $frame, $bind) use ($channel) {
                         return [new Queue($frame->queue, $channel), $bind, $channel];
                     })
                     ->flatMap(function ($queue_with_binding) {
